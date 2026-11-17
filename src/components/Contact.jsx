@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from "framer-motion";
 import Magnetic from "./Magnetic.jsx";
 import { profile } from "../data.js";
 import Socials from "./Socials.jsx";
+import emailjs from '@emailjs/browser'; // EmailJS import kiya
 
 function Field({ label, children, i }) {
   return (
@@ -18,6 +19,8 @@ export default function Contact() {
   const [f, setF] = useState({ name: "", email: "", type: "Web Development", msg: "" });
   const [state, setState] = useState("idle");
   const [done, setDone] = useState(null);
+  const form = useRef(); // Form ka reference
+
   const mx = useMotionValue(0), my = useMotionValue(0);
   const sx = useSpring(mx, { stiffness: 50, damping: 20 }), sy = useSpring(my, { stiffness: 50, damping: 20 });
   const b1x = useTransform(sx, [-1, 1], [-40, 40]), b1y = useTransform(sy, [-1, 1], [-30, 30]);
@@ -25,38 +28,28 @@ export default function Contact() {
 
   const [err, setErr] = useState("");
 
-  // Sends the message straight to Nida's inbox via FormSubmit (no backend needed).
-  // If the network request fails, it falls back to the visitor's email app so a message is never lost.
-  const submit = async (e) => {
+  // Naya EmailJS wala submit function
+  const submit = (e) => {
     e.preventDefault();
-    setState("sending"); setErr("");
-    try {
-      const res = await fetch(`https://formsubmit.co/ajax/${profile.email}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ name: f.name, email: f.email, project_type: f.type, message: f.msg, _replyto: f.email, _subject: `Portfolio enquiry — ${f.type} (${f.name})`, _template: "table", _captcha: "false", _honey: "", _autoresponse: `Hi ${f.name}, thank you for reaching out! I've received your message about "${f.type}" and will reply to you personally within 24 hours. — Nida Sajjad` }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || String(data.success) === "false") throw new Error(data.message || "failed");
-      setDone({ name: f.name, email: f.email });
-      setState("idle");
-      setF({ name: "", email: "", type: "Web Development", msg: "" });
-    } catch (e2) {
-      setState("idle");
-      setErr("fail");
-    }
-  };
+    setState("sending"); 
+    setErr("");
 
-  const subject = `Portfolio enquiry — ${f.type}${f.name ? ` (${f.name})` : ""}`;
-  const text = `Hi Nida,\n\n${f.msg}\n\n— ${f.name} (${f.email})`;
-  const mailto = `mailto:${profile.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
-  const gmail = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(profile.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    const full = `To: ${profile.email}\nSubject: ${subject}\n\n${text}`;
-    try { await navigator.clipboard.writeText(full); }
-    catch (_) { const t = document.createElement("textarea"); t.value = full; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); } catch (__) {} t.remove(); }
-    setCopied(true); setTimeout(() => setCopied(false), 2000);
+    emailjs.sendForm(
+      'service_l5htgnc',       // Aapki Service ID
+      'template_obyz8yb',      // Aapki Template ID
+      form.current,            // Form ka data
+      'dG69xWO5y8Gr-y1OG'      // Aapki Public Key
+    )
+    .then((result) => {
+        setDone({ name: f.name, email: f.email });
+        setState("idle");
+        setF({ name: "", email: "", type: "Web Development", msg: "" });
+        form.current.reset();
+    }, (error) => {
+        setState("idle");
+        setErr("fail");
+        console.error(error.text);
+    });
   };
 
   return (
@@ -105,15 +98,21 @@ export default function Contact() {
               <button type="button" onClick={() => setDone(null)} className="mt-6 rounded-full border border-primary/50 px-5 py-2 text-sm font-bold text-primary transition hover:bg-primary hover:text-white">Send another message</button>
             </motion.div>
           ) : (
-          <form onSubmit={submit} className="relative space-y-5">
-            <Field label="Your Name" i={0}><input required className={input} placeholder="Jane Doe" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-            <Field label="Your Email" i={1}><input required type="email" className={input} placeholder="jane@example.com" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+          <form ref={form} onSubmit={submit} className="relative space-y-5">
+            <Field label="Your Name" i={0}>
+              <input required name="name" className={input} placeholder="Jane Doe" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+            </Field>
+            <Field label="Your Email" i={1}>
+              <input required type="email" name="email" className={input} placeholder="jane@example.com" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
+            </Field>
             <Field label="Project Type" i={2}>
-              <select className={input} value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>
+              <select name="project_type" className={input} value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>
                 {["Web Development", "AI Application", "UI/UX Design", "Graphic Design", "QA & Testing"].map((o) => <option key={o}>{o}</option>)}
               </select>
             </Field>
-            <Field label="Your Message" i={3}><textarea required rows={4} className={`${input} resize-none`} placeholder="Tell me about your project…" value={f.msg} onChange={(e) => setF({ ...f, msg: e.target.value })} /></Field>
+            <Field label="Your Message" i={3}>
+              <textarea required name="message" rows={4} className={`${input} resize-none`} placeholder="Tell me about your project…" value={f.msg} onChange={(e) => setF({ ...f, msg: e.target.value })} />
+            </Field>
             <Magnetic strength={0.15} className="w-full">
               <motion.button whileTap={{ scale: 0.96 }} disabled={state !== "idle"} type="submit"
                 className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-primary via-secondary to-primary bg-[length:200%_auto] py-4 text-lg font-bold text-white shadow-xl shadow-purple-300 animate-shimmer">
@@ -128,22 +127,10 @@ export default function Contact() {
               {err === "fail" && (
                 <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} aria-live="polite"
                   className="rounded-2xl border border-rose-300/60 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-950/40 dark:text-rose-200">
-                  <p className="font-semibold">Direct sending isn't available in this environment.</p>
-                  <p className="mt-1 opacity-90">Your text is safe — send it with one click instead:</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <a href={gmail} target="_blank" rel="noreferrer" className="rounded-full bg-gradient-to-r from-primary to-secondary px-4 py-2 font-bold text-white">Open Gmail ↗</a>
-                    <a href={mailto} target="_blank" rel="noreferrer" className="rounded-full border border-primary/50 px-4 py-2 font-bold text-primary">Email app</a>
-                    <button type="button" onClick={copy} className="rounded-full border border-primary/50 px-4 py-2 font-bold text-primary">{copied ? "✓ Copied" : "Copy message"}</button>
-                  </div>
-                  <p className="mt-3 text-xs opacity-80">Or write directly to <b>{profile.email}</b></p>
+                  <p className="font-semibold">Message send nahi ho saka.</p>
+                  <p className="mt-1 opacity-90">Internet connection check karein ya thodi der baad koshish karein.</p>
                 </motion.div>
               )}
-            </AnimatePresence>
-            <AnimatePresence>
-              {state === "sent" && Array.from({ length: 22 }).map((_, i) => (
-                <motion.i key={i} initial={{ x: 0, y: 0, opacity: 1, scale: 1 }} animate={{ x: (Math.random() - 0.5) * 420, y: -Math.random() * 300 - 40, opacity: 0, scale: 0.4, rotate: Math.random() * 360 }} transition={{ duration: 1.3, ease: "easeOut" }}
-                  className="pointer-events-none absolute bottom-6 left-1/2 h-2.5 w-2.5 rounded-sm" style={{ background: ["#8b5cf6", "#d946ef", "#f0abfc", "#fbbf24", "#34d399"][i % 5] }} />
-              ))}
             </AnimatePresence>
           </form>
           )}
